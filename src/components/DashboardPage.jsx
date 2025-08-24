@@ -1,34 +1,41 @@
 import React, { useState, useEffect } from 'react';
-// Make sure to install the aptos sdk in your frontend project: npm install aptos
 import { AptosClient } from 'aptos';
 
 const client = new AptosClient("https://fullnode.devnet.aptoslabs.com/v1");
 
-export default function DashboardPage({ adminAddress }) {
+export default function DashboardPage({ adminAddress, adminUser }) {
     const [daoState, setDaoState] = useState(null);
+    const [adminData, setAdminData] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
     const [statusMessage, setStatusMessage] = useState('');
     const [newMemberAddress, setNewMemberAddress] = useState('');
 
-    const fetchDaoState = async () => {
-        try {
-            setIsLoading(true);
-            const response = await fetch(`http://localhost:3000/dao_state?admin_address=${adminAddress}`);
-            if (!response.ok) {
-                const { error } = await response.json();
-                throw new Error(error);
-            }
-            const data = await response.json();
-            setDaoState(data.data); // The actual data is in the .data field
-        } catch (error) {
-            console.error("Failed to fetch DAO state:", error);
-            setStatusMessage(`Error: ${error.message}`);
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
     useEffect(() => {
+        const fetchDaoState = async () => {
+            try {
+                setIsLoading(true);
+                // Fetch the on-chain state of the DAO
+                const response = await fetch(`http://localhost:3000/dao_state?admin_address=${adminAddress}`);
+                if (!response.ok) {
+                    const { error } = await response.json();
+                    throw new Error(error);
+                }
+                const data = await response.json();
+                setDaoState(data.data);
+
+                // Fetch all admins to find this admin's trust score
+                const adminsRes = await fetch('http://localhost:3000/admins');
+                const adminsData = await adminsRes.json();
+                const thisAdmin = adminsData.find(a => a.wallet_address === adminAddress);
+                setAdminData(thisAdmin);
+
+            } catch (error) {
+                console.error("Failed to fetch DAO state:", error);
+                setStatusMessage(`Error: ${error.message}`);
+            } finally {
+                setIsLoading(false);
+            }
+        };
         fetchDaoState();
     }, [adminAddress]);
 
@@ -47,7 +54,16 @@ export default function DashboardPage({ adminAddress }) {
             const pendingTx = await window.aptos.signAndSubmitTransaction(payload);
             await client.waitForTransaction({ transactionHash: pendingTx.hash });
             setStatusMessage(`Success! Txn: ${pendingTx.hash.substring(0,12)}...`);
-            fetchDaoState(); // Refresh state after transaction
+            // Refresh state after transaction
+            const daoRes = await fetch(`http://localhost:3000/dao_state?admin_address=${adminAddress}`);
+            const daoData = await daoRes.json();
+            setDaoState(daoData.data);
+
+            const adminsRes = await fetch('http://localhost:3000/admins');
+            const adminsData = await adminsRes.json();
+            const thisAdmin = adminsData.find(a => a.wallet_address === adminAddress);
+            setAdminData(thisAdmin);
+
         } catch (error) {
             console.error("Transaction failed:", error);
             setStatusMessage(`Error: ${error.message}`);
@@ -55,11 +71,18 @@ export default function DashboardPage({ adminAddress }) {
     };
 
     if (isLoading) return <p className="container">Loading DAO State...</p>;
-    if (!daoState) return <p className="container status-message">{statusMessage}</p>;
+    if (!daoState || !adminData) {
+      return (
+        <div className="container status-message">
+          {statusMessage || "No DAO found for this address. Please register or check your wallet."}
+        </div>
+      );
+    }
 
     return (
         <div className="container">
             <h2 className="page-title">{daoState.name}</h2>
+            <p>DAO Trust Score: {adminData.trust_score}</p>
             <div className="dashboard-grid">
                 <div className="dashboard-main">
                     {/* DAO Stats */}
@@ -74,7 +97,13 @@ export default function DashboardPage({ adminAddress }) {
                     <div className="card">
                         <h3>Members ({daoState.members.length})</h3>
                         <ul>
-                            {daoState.members.map(m => <li key={m.addr}>{m.addr.substring(0,10)}... (Rep: {m.reputation_score})</li>)}
+                            {daoState.members.map(m => (
+                                <li key={m.addr}>
+                                    <strong>Address:</strong> {m.addr.substring(0, 10)}...<br />
+                                    <strong>Reputation:</strong> {m.reputation_score}
+                                    {/* Optionally add more user info if available */}
+                                </li>
+                            ))}
                         </ul>
                         <form onSubmit={(e) => { e.preventDefault(); handleContractInteraction('add_member', [newMemberAddress]); }}>
                             <input type="text" value={newMemberAddress} onChange={e => setNewMemberAddress(e.target.value)} placeholder="New member address" />
@@ -84,7 +113,7 @@ export default function DashboardPage({ adminAddress }) {
                 </div>
 
                 <div className="dashboard-sidebar">
-                     {/* Voting Section */}
+                    {/* Voting Section */}
                     <div className="card">
                         <h3>Payout Voting</h3>
                         {daoState.current_proposal_recipient.vec.length > 0 ? (
