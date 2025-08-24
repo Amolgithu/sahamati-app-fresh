@@ -6,6 +6,7 @@ export default function UserDashboard({ user }) {
     const [isLoading, setIsLoading] = useState(true);
     const [statusMessage, setStatusMessage] = useState('');
     const [selectedAdmin, setSelectedAdmin] = useState('');
+    const [selectedDao, setSelectedDao] = useState(null);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -16,6 +17,7 @@ export default function UserDashboard({ user }) {
                 setAdmins(adminsData);
                 if (adminsData.length > 0) {
                     setSelectedAdmin(adminsData[0].admin_id);
+                    setSelectedDao(adminsData[0]);
                 }
 
                 // Fetch user's trust score
@@ -59,6 +61,28 @@ export default function UserDashboard({ user }) {
         }
     };
 
+    const handleVoteOnProposal = async (adminAddress, proposalId) => {
+        setStatusMessage('Voting...');
+        try {
+            const response = await fetch('http://localhost:3000/vote_on_proposal', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    admin_address: adminAddress,
+                    proposal_id: proposalId,
+                    member_address: user.wallet_address,
+                }),
+            });
+            const { payload } = await response.json();
+            const pendingTx = await window.aptos.signAndSubmitTransaction(payload);
+            await client.waitForTransaction({ transactionHash: pendingTx.hash });
+            setStatusMessage('Vote submitted!');
+            // Refresh DAO state if needed
+        } catch (error) {
+            setStatusMessage(`Error: ${error.message}`);
+        }
+    };
+
     if (isLoading) return <p className="container">Loading User Dashboard...</p>;
 
     return (
@@ -83,6 +107,23 @@ export default function UserDashboard({ user }) {
                             <button type="submit" className="btn btn-primary">Simulate Payment</button>
                         </form>
                     </div>
+                    {selectedDao && (
+                        <div className="card">
+                            <h3>Proposals for {selectedDao.display_name}</h3>
+                            <ul>
+                                {selectedDao.proposals.map(p => (
+                                    <li key={p.id}>
+                                        <strong>{p.description}</strong> - {p.amount} APT to {p.recipient.substring(0,10)}...
+                                        <br />
+                                        Votes: {p.votes.length} {p.executed ? "(Executed)" : ""}
+                                        {!p.executed && (
+                                            <button onClick={() => handleVoteOnProposal(selectedDao.admin_address, p.id)}>Vote</button>
+                                        )}
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
                 </div>
                 <div className="dashboard-sidebar">
                     <div className="card">

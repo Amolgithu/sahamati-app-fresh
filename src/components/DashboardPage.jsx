@@ -9,6 +9,9 @@ export default function DashboardPage({ adminAddress, adminUser }) {
     const [isLoading, setIsLoading] = useState(true);
     const [statusMessage, setStatusMessage] = useState('');
     const [newMemberAddress, setNewMemberAddress] = useState('');
+    const [proposalDesc, setProposalDesc] = useState('');
+    const [proposalAmount, setProposalAmount] = useState('');
+    const [proposalRecipient, setProposalRecipient] = useState('');
 
     useEffect(() => {
         const fetchDaoState = async () => {
@@ -70,6 +73,39 @@ export default function DashboardPage({ adminAddress, adminUser }) {
         }
     };
 
+    const handleCreateProposal = async (e) => {
+        e.preventDefault();
+        setStatusMessage('Creating proposal...');
+        try {
+            const response = await fetch('http://localhost:3000/create_proposal', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    admin_address: adminAddress,
+                    description: proposalDesc,
+                    amount: Number(proposalAmount),
+                    recipient: proposalRecipient,
+                }),
+            });
+            const { payload } = await response.json();
+            const pendingTx = await window.aptos.signAndSubmitTransaction(payload);
+            await client.waitForTransaction({ transactionHash: pendingTx.hash });
+            setStatusMessage('Proposal created!');
+            // Refresh DAO state
+            const daoRes = await fetch(`http://localhost:3000/dao_state?admin_address=${adminAddress}`);
+            const daoData = await daoRes.json();
+            setDaoState(daoData.data);
+
+            const adminsRes = await fetch('http://localhost:3000/admins');
+            const adminsData = await adminsRes.json();
+            const thisAdmin = adminsData.find(a => a.wallet_address === adminAddress);
+            setAdminData(thisAdmin);
+
+        } catch (error) {
+            setStatusMessage(`Error: ${error.message}`);
+        }
+    };
+
     if (isLoading) return <p className="container">Loading DAO State...</p>;
     if (!daoState || !adminData) {
       return (
@@ -109,6 +145,29 @@ export default function DashboardPage({ adminAddress, adminUser }) {
                             <input type="text" value={newMemberAddress} onChange={e => setNewMemberAddress(e.target.value)} placeholder="New member address" />
                             <button type="submit">Add Member</button>
                         </form>
+                    </div>
+
+                    {/* Proposals Section */}
+                    <div className="card">
+                        <h3>Proposals</h3>
+                        <form onSubmit={handleCreateProposal}>
+                            <input type="text" placeholder="Description" value={proposalDesc} onChange={e => setProposalDesc(e.target.value)} />
+                            <input type="number" placeholder="Amount" value={proposalAmount} onChange={e => setProposalAmount(e.target.value)} />
+                            <input type="text" placeholder="Recipient Address" value={proposalRecipient} onChange={e => setProposalRecipient(e.target.value)} />
+                            <button type="submit">Create Proposal</button>
+                        </form>
+                        <ul>
+                            {daoState.proposals.map(p => (
+                                <li key={p.id}>
+                                    <strong>{p.description}</strong> - {p.amount} APT to {p.recipient.substring(0,10)}...
+                                    <br />
+                                    Votes: {p.votes.length} {p.executed ? "(Executed)" : ""}
+                                    {!p.executed && (
+                                        <button onClick={() => handleContractInteraction('execute_proposal', [p.id])}>Execute</button>
+                                    )}
+                                </li>
+                            ))}
+                        </ul>
                     </div>
                 </div>
 
