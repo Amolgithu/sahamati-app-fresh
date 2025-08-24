@@ -3,60 +3,40 @@ import './App.css';
 import Header from './components/Header';
 import HomePage from './components/HomePage';
 import DashboardPage from './components/DashboardPage';
-import ProposalsPage from './components/ProposalsPage';
-import ProposalModal from './components/ProposalModal';
 
 export default function App() {
-  const [page, setPage] = useState('home');
-  const [walletConnected, setWalletConnected] = useState(false);
-  const [userAddress, setUserAddress] = useState('');
+  // We now store the admin address, which is also the DAO's ID
+  const [adminAddress, setAdminAddress] = useState(null);
   const [isDarkMode, setIsDarkMode] = useState(true);
-  const [showProposalModal, setShowProposalModal] = useState(false);
 
   useEffect(() => {
     document.body.className = isDarkMode ? 'dark-mode' : 'light-mode';
   }, [isDarkMode]);
 
-  const handleConnectWallet = () => {
-    setWalletConnected(true);
-    setUserAddress('0xAdmin...a1b2');
-    setPage('dashboard');
+  const handleDaoCreated = (address) => {
+    setAdminAddress(address);
   };
 
-  const handleDisconnectWallet = () => {
-    setWalletConnected(false);
-    setUserAddress('');
-    setPage('home');
-  };
-
-  const renderPage = () => {
-    if (!walletConnected) {
-      return <HomePage onConnectWallet={handleConnectWallet} />;
-    }
-    switch (page) {
-      case 'dashboard':
-        return <DashboardPage onShowProposalModal={() => setShowProposalModal(true)} />;
-      case 'proposals':
-        return <ProposalsPage onShowProposalModal={() => setShowProposalModal(true)} />;
-      default:
-        return <HomePage onConnectWallet={handleConnectWallet} />;
-    }
+  const handleDisconnect = () => {
+    setAdminAddress(null);
   };
 
   return (
     <div className="app-container">
       <Header
-        walletConnected={walletConnected}
-        userAddress={userAddress}
-        onDisconnectWallet={handleDisconnectWallet}
-        setPage={setPage}
+        walletConnected={!!adminAddress}
+        userAddress={adminAddress || ''}
+        onDisconnectWallet={handleDisconnect}
         isDarkMode={isDarkMode}
         setIsDarkMode={setIsDarkMode}
       />
       <main className="main-content">
-        {renderPage()}
+        {adminAddress ? (
+          <DashboardPage adminAddress={adminAddress} />
+        ) : (
+          <HomePage onDaoCreated={handleDaoCreated} />
+        )}
       </main>
-      {showProposalModal && <ProposalModal onClose={() => setShowProposalModal(false)} />}
     </div>
   );
 }
